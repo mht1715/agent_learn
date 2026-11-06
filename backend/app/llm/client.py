@@ -2,7 +2,7 @@ from functools import lru_cache
 
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 
-from backend.app.core.config import settings
+from app.core.config import settings
 
 
 @lru_cache(maxsize=1)
