@@ -1,12 +1,13 @@
 import json
 import logging
 from time import perf_counter
-from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage, AIMessage
+from typing import Iterator, Any
 
+from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage
 from app.agent.tools.registry import TOOLS, TOOL_MAP
 from app.llm.client import get_chat_client
 
-logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpx2").setLevel(logging.WARNING)
 logging.getLogger("langchain_openai").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 MAX_STEPS = 5
@@ -18,7 +19,7 @@ def _call_signature(call: dict) -> str:
     return f"{call['name']}:{json.dumps(call['args'], sort_keys=True, ensure_ascii=False)}"
 
 
-def run_agent(user_input: str) -> dict:
+def run_agent_event(user_input: str) -> Iterator[dict]:
     llm = get_chat_client().bind_tools(TOOLS)
     messages = [
         SystemMessage(content="你是工单助手，需要时调用工具，不要编造数据。"),
@@ -26,6 +27,10 @@ def run_agent(user_input: str) -> dict:
     ]
     call_counts: dict[str, int] = {}
     for step in range(1, MAX_STEPS + 1):
+        yield {
+            "type": "step_start",
+            "step": step
+        }
         t0 = perf_counter()
         ai = llm.invoke(messages)
         latency_ms = int((perf_counter() - t0) * 1000)
@@ -39,20 +44,33 @@ def run_agent(user_input: str) -> dict:
         messages.append(ai)
 
         if not ai.tool_calls:
-            return {"status": "ok", "answer": ai.content, "steps": step}
+            yield {
+                "type": "final",
+                "status": "ok",
+                "answer": ai.content,
+                "steps": step
+            }
+            return None
 
         for call in ai.tool_calls:
             sin = _call_signature(call)
             call_counts[sin] = call_counts.get(sin, 0) + 1
             if call_counts[sin] > MAX_REPEAT_CALLS:
                 logger.error(f"repeat_call_abort sin=%s", sin)
-                return {
+                yield {
+                    "type": "final",
                     "status": "aborted",
                     "reason": "repeat_call_abort",
                     "answer": "同一工具重复多次调用",
                     "steps": step,
                 }
-
+                return None
+            yield {
+                "type": "tool_call",
+                "step": step,
+                "name": call["name"],
+                "args": call["args"]
+            }
             tool = TOOL_MAP.get(call["name"])
             if tool is None:
                 result = f"错误：不存在工具 {call['name']}"
@@ -63,14 +81,28 @@ def run_agent(user_input: str) -> dict:
                 except Exception as e:
                     result = f"工具{call['name']}执行失败"
                     logger.exception("unknown_tool name=%s", call["name"])
-
+            yield {
+                "type": "tool_result",
+                "step": step,
+                "name": call["name"],
+                "result": str(result)
+            }
             messages.append(
                 ToolMessage(content=str(result), tool_call_id=call["id"])
             )
     logger.warning("max_steps_reached steps=%d", MAX_STEPS)
-    return {
+    yield {
+        "type": "final",
         "status": "aborted",
         "reason": "max_steps",
         "answer": f"达到最大步数 {MAX_STEPS}，任务未完成。",
         "steps": MAX_STEPS,
     }
+
+
+def run_agent(user_input: str) -> dict[str, str] | dict[Any, Any]:
+    final = {"type": "error", "message": "no event produced"}
+    for ev in run_agent_event(user_input):
+        if ev["type"] in ("final", "error"):
+            final = ev
+    return final
