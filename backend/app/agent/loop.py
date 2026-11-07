@@ -19,7 +19,7 @@ def _call_signature(call: dict) -> str:
     return f"{call['name']}:{json.dumps(call['args'], sort_keys=True, ensure_ascii=False)}"
 
 
-def run_agent_event(user_input: str) -> Iterator[dict]:
+def run_agent_events(user_input: str) -> Iterator[dict]:
     llm = get_chat_client().bind_tools(TOOLS)
     messages = [
         SystemMessage(content="你是工单助手，需要时调用工具，不要编造数据。"),
@@ -102,7 +102,7 @@ def run_agent_event(user_input: str) -> Iterator[dict]:
 
 def run_agent(user_input: str) -> dict[str, str] | dict[Any, Any]:
     final = {"type": "error", "message": "no event produced"}
-    for ev in run_agent_event(user_input):
+    for ev in run_agent_events(user_input):
         if ev["type"] in ("final", "error"):
             final = ev
     return final

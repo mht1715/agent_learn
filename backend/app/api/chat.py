@@ -4,7 +4,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
 
-from app.agent.loop import run_agent, run_agent_event
+from app.agent.loop import run_agent, run_agent_events
 
 router = APIRouter()
 
@@ -22,7 +22,7 @@ def chat(req: ChatRequest):
 def chat_stream(req: ChatRequest):
     def gen():
         try:
-            for ev in run_agent_event(req.message):
+            for ev in run_agent_events(req.message):
                 yield f"data: {json.dumps(ev, ensure_ascii=False)} \n\n"
         except Exception as exc:
             err = {"type": "error", "message": str(exc)}
