@@ -11,5 +11,5 @@ def get_weather(city: str) -> str:
 @tool("get_order_status")
 def get_order_status(order_id: str) -> str:
     """获取订单状态"""
-    fake = {"A001": "已发货", "A002": "已退款"}
+    fake = {"A1001": "已发货", "A1002": "已退款"}
     return fake.get(order_id, f"没有获取到订单{order_id}")
