@@ -22,7 +22,12 @@ def _call_signature(call: dict) -> str:
 def run_agent_events(user_input: str) -> Iterator[dict]:
     llm = get_chat_client().bind_tools(TOOLS)
     messages = [
-        SystemMessage(content="你是工单助手，需要时调用工具，不要编造数据。"),
+        SystemMessage(content=(
+            "你是工单助手。你需要严格遵守以下规则：\n"
+            "1. 涉及订单状态、物流、天气等实时数据时，调用对应工具查询，不要编造。\n"
+            "2. 涉及平台规则、退款政策、发票、售后流程等内部知识时，必须先调用 search_knowledge_base 检索知识库。\n"
+            "3. 如果工具查不到，如实告知用户，不要自行发挥。"
+        )),
         HumanMessage(content=user_input),
     ]
     call_counts: dict[str, int] = {}

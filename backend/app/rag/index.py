@@ -45,3 +45,13 @@ def search(query: str, top_k: int = 3) -> list[dict]:
         {**idx["chunks"][i], "score": float(scores[i])}
         for i in order
     ]
+
+
+def search_all(query: str) -> list[dict]:
+    """返回全部块的分数，用于调试排序。"""
+    idx = build_index()
+    q = np.array(idx["embed"].embed_query(query), dtype=np.float32)
+    q /= np.linalg.norm(q) + 1e-8
+    scores = idx["matrix"] @ q
+    order = np.argsort(-scores)
+    return [{**idx["chunks"][i], "score": float(scores[i])} for i in order]
