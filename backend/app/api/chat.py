@@ -11,6 +11,7 @@ router = APIRouter()
 
 class ChatRequest(BaseModel):
     message: str
+    session_id: str = "default"
 
 
 @router.post("/chat")
@@ -22,7 +23,7 @@ def chat(req: ChatRequest):
 def chat_stream(req: ChatRequest):
     def gen():
         try:
-            for ev in run_agent_events(req.message):
+            for ev in run_agent_events(req.message, req.session_id):
                 yield f"data: {json.dumps(ev, ensure_ascii=False)} \n\n"
         except Exception as exc:
             err = {"type": "error", "message": str(exc)}

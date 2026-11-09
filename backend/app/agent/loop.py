@@ -12,6 +12,8 @@ logging.getLogger("langchain_openai").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 MAX_STEPS = 5
 MAX_REPEAT_CALLS = 2  # 同一工具+同一参数调用超过这个次数就终止
+# 用内存字典模拟数据库存储：{session_id: [消息列表]}
+MEMORY_STORE = {}
 
 
 def _call_signature(call: dict) -> str:
@@ -19,17 +21,20 @@ def _call_signature(call: dict) -> str:
     return f"{call['name']}:{json.dumps(call['args'], sort_keys=True, ensure_ascii=False)}"
 
 
-def run_agent_events(user_input: str) -> Iterator[dict]:
+def run_agent_events(user_input: str, session_id: str = "default") -> Iterator[dict]:
     llm = get_chat_client().bind_tools(TOOLS)
-    messages = [
-        SystemMessage(content=(
-            "你是工单助手。你需要严格遵守以下规则：\n"
-            "1. 涉及订单状态、物流、天气等实时数据时，调用对应工具查询，不要编造。\n"
-            "2. 涉及平台规则、退款政策、发票、售后流程等内部知识时，必须先调用 search_knowledge_base 检索知识库。\n"
-            "3. 如果工具查不到，如实告知用户，不要自行发挥。"
-        )),
-        HumanMessage(content=user_input),
-    ]
+    if session_id not in MEMORY_STORE:
+        MEMORY_STORE[session_id] = [
+            SystemMessage(content=(
+                "你是工单助手。你需要严格遵守以下规则：\n"
+                "1. 涉及订单状态、物流、天气等实时数据时，调用对应工具查询，不要编造。\n"
+                "2. 涉及平台规则、退款政策、发票、售后流程等内部知识时，必须先调用 search_knowledge_base 检索知识库。\n"
+                "3. 如果工具查不到，如实告知用户，不要自行发挥。"
+            ))
+        ]
+
+    messages = MEMORY_STORE[session_id]
+    messages.append(HumanMessage(content=user_input))
     call_counts: dict[str, int] = {}
     for step in range(1, MAX_STEPS + 1):
         yield {
@@ -105,9 +110,9 @@ def run_agent_events(user_input: str) -> Iterator[dict]:
     }
 
 
-def run_agent(user_input: str) -> dict[str, str] | dict[Any, Any]:
+def run_agent(user_input: str, session_id: str = "default") -> dict[str, str] | dict[Any, Any]:
     final = {"type": "error", "message": "no event produced"}
-    for ev in run_agent_events(user_input):
+    for ev in run_agent_events(user_input, session_id):
         if ev["type"] in ("final", "error"):
             final = ev
     return final
