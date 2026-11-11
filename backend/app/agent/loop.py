@@ -4,6 +4,9 @@ from time import perf_counter
 from typing import Iterator, Any
 
 from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage
+
+from app.agent.context import compress_history
+from app.agent.memory import load_history, save_message
 from app.agent.tools.registry import TOOLS, TOOL_MAP
 from app.llm.client import get_chat_client
 
@@ -12,8 +15,6 @@ logging.getLogger("langchain_openai").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 MAX_STEPS = 5
 MAX_REPEAT_CALLS = 2  # 同一工具+同一参数调用超过这个次数就终止
-# 用内存字典模拟数据库存储：{session_id: [消息列表]}
-MEMORY_STORE = {}
 
 
 def _call_signature(call: dict) -> str:
@@ -23,18 +24,12 @@ def _call_signature(call: dict) -> str:
 
 def run_agent_events(user_input: str, session_id: str = "default") -> Iterator[dict]:
     llm = get_chat_client().bind_tools(TOOLS)
-    if session_id not in MEMORY_STORE:
-        MEMORY_STORE[session_id] = [
-            SystemMessage(content=(
-                "你是工单助手。你需要严格遵守以下规则：\n"
-                "1. 涉及订单状态、物流、天气等实时数据时，调用对应工具查询，不要编造。\n"
-                "2. 涉及平台规则、退款政策、发票、售后流程等内部知识时，必须先调用 search_knowledge_base 检索知识库。\n"
-                "3. 如果工具查不到，如实告知用户，不要自行发挥。"
-            ))
-        ]
+    history = load_history(session_id)
+    messages = compress_history(history)
+    human_msg = HumanMessage(content=user_input)
+    messages.append(human_msg)
+    save_message(session_id, human_msg)
 
-    messages = MEMORY_STORE[session_id]
-    messages.append(HumanMessage(content=user_input))
     call_counts: dict[str, int] = {}
     for step in range(1, MAX_STEPS + 1):
         yield {
@@ -52,6 +47,7 @@ def run_agent_events(user_input: str, session_id: str = "default") -> Iterator[d
             len(ai.content or ""),
         )
         messages.append(ai)
+        save_message(session_id, ai)
 
         if not ai.tool_calls:
             yield {
