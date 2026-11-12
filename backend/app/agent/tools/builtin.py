@@ -13,3 +13,9 @@ def get_order_status(order_id: str) -> str:
     """获取订单状态"""
     fake = {"A1001": "已发货", "A1002": "已退款"}
     return fake.get(order_id, f"没有获取到订单{order_id}")
+
+
+@tool("cancel_order")
+def cancel_order(order_id: str) -> str:
+    """取消订单（高危操作）。"""
+    return f"订单 {order_id} 已成功取消。"
