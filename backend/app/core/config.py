@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     dashscope_embedding_model: str = "text-embedding-v4"
     embedding_dimensions: int = 1024
 
+    # Langfuse配置
+    langfuse_public_key: str
+    langfuse_secret_key: str
+    langfuse_base_url: str
+
     # ── 应用 ──
     app_env: str = "development"
     log_level: str = "INFO"

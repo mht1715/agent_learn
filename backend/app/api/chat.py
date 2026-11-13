@@ -1,4 +1,9 @@
 import json
+
+from dotenv import load_dotenv
+from langfuse.langchain import CallbackHandler
+
+load_dotenv()
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -6,6 +11,7 @@ from langchain_core.messages import HumanMessage
 from backend.app.agent.graph import graph
 
 router = APIRouter()
+langfuse_handler = CallbackHandler()
 
 
 class ChatRequest(BaseModel):
@@ -16,7 +22,11 @@ class ChatRequest(BaseModel):
 
 @router.post("/chat/stream")
 def chat_stream(req: ChatRequest):
-    config = {"configurable": {"thread_id": req.session_id}}
+    config = {
+        "configurable": {"thread_id": req.session_id},
+        "callbacks": [langfuse_handler],
+        "metadata": {"langfuse_session_id": req.session_id},
+    }
 
     def gen():
         try:
