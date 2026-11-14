@@ -1,6 +1,6 @@
 <script setup>
 import {ref, onMounted} from 'vue'
-import {chatStream} from '../api/sse'
+import {chatStream, getChatState} from '../api/sse'
 
 const input = ref('帮我取消订单 A1001') // 默认填审批测试用例
 const events = ref([])
@@ -11,15 +11,32 @@ const loading = ref(false)
 const sessionId = ref('')
 const needApproval = ref(false)
 
-onMounted(() => {
-  // 利用 localStorage 保证刷新页面后 session 不丢
+onMounted(async () => {
+  // 1. 获取 sessionId
   let sid = localStorage.getItem('agent_session_id')
   if (!sid) {
-    // 浏览器原生 UUID
     sid = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2)
     localStorage.setItem('agent_session_id', sid)
   }
   sessionId.value = sid
+
+  // 2. 关键：检查后端是否有未完成的挂起任务（应对刷新）
+  try {
+    const resp = await getChatState(sessionId.value)
+    if (resp.data && resp.data.interrupted) {
+      // 恢复事件流 UI 显示
+      events.value = resp.data.tool_calls.map(tc => ({
+        type: 'tool_call',
+        name: tc.name,
+        args: tc.args
+      }))
+      answer.value = resp.data.message
+      // 重新唤起审批框
+      needApproval.value = true
+    }
+  } catch (e) {
+    console.warn("获取初始状态失败", e)
+  }
 })
 
 // 修改：接收 action 参数

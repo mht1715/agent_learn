@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from langfuse.langchain import CallbackHandler
 
 load_dotenv()
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from langchain_core.messages import HumanMessage
@@ -18,6 +18,39 @@ class ChatRequest(BaseModel):
     message: str | None = None
     session_id: str
     action: str = "chat"  # chat: 正常对话, resume: 审批继续
+
+
+@router.get("/chat/state")
+def get_chat_state(session_id: str = Query(...)):
+    config = {"configurable": {"thread_id": session_id}}
+    state = graph.get_state(config)
+
+    # 如果没有历史状态
+    if not state or not state.values.get("messages"):
+        return {"interrupted": False}
+
+    # 判断是否挂起在 sensitive_tools 节点前
+    is_interrupted = bool(state.next and "sensitive_tools" in state.next)
+
+    if not is_interrupted:
+        return {"interrupted": False}
+
+    # 找出最后一条 AI 消息，提取要调用的高危工具名
+    last_ai_msg = None
+    for msg in reversed(state.values["messages"]):
+        if getattr(msg, "type", "") == "ai" and getattr(msg, "tool_calls", None):
+            last_ai_msg = msg
+            break
+
+    tool_calls = []
+    if last_ai_msg:
+        tool_calls = [{"name": tc["name"], "args": tc["args"]} for tc in last_ai_msg.tool_calls]
+
+    return {
+        "interrupted": True,
+        "tool_calls": tool_calls,
+        "message": "检测到高危操作，需要人工审批。"
+    }
 
 
 @router.post("/chat/stream")

@@ -48,3 +48,9 @@ export function chatStream(payload, onEvent) {
             }
         })
 }
+
+export function getChatState(sessionId) {
+    return http.get('/chat/state', {
+        params: { session_id: sessionId }
+    })
+}
